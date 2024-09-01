@@ -8,7 +8,7 @@
 
 const unsigned short SECTOR_SIZE = 512; // true across every fat32 filesystem, if this changes something is VERY wrong;
 const unsigned char FAT_NUMBER = 2; // What does that even mean?
-const unsigned short MAGIC_SIG = 0xAA55; // Magic number identifying the volume ID sector.
+const unsigned short MAGIC_SIG = 0xAA55; // Magic number identifying the volume ID sector. Offset at 0x1FE in vsector.
 
 struct fat32_descriptor
 {
@@ -18,7 +18,8 @@ struct fat32_descriptor
 	unsigned int root_first_cluster; //0x2C //usually at 0x2;
 };
 
-int parse_vsector(const struct fat32_descriptor* container, const char* sector)
+
+int parse_vsector(struct fat32_descriptor* const container, const unsigned char* const sector)
 {
 	unsigned short magic_num = *((short*)(sector + 0x1FE));
 	if(magic_num != MAGIC_SIG)
@@ -27,6 +28,11 @@ int parse_vsector(const struct fat32_descriptor* container, const char* sector)
 		return 1; // ma
 	}
 	
+	container->sec_per_cluster = sector[0x0D];
+	container->reserved_sectors_amnt = *((unsigned short*)(sector + 0x0E));
+	container->sec_per_fat = *((unsigned int*)(sector + 0x24));
+	container->root_first_cluster = *((unsigned int*)(sector + 0x2C));
+
 	return 0;
 }
 
@@ -37,7 +43,7 @@ int main(int argc, char* argv[])
 		printf("E:Device file argument expected. \n");
 		return 1;
 	}
-	char* path = argv[1];
+	const char* path = argv[1];
 	printf("%s \n", path); 
 	unsigned char buffer[512];
 	int fd = open(path, O_RDONLY, O_SYNC);
@@ -48,6 +54,15 @@ int main(int argc, char* argv[])
 		return fail;
 	}
 	read(fd, buffer, 512);
+	
+
+	struct fat32_descriptor fs_descriptor;
+	int res = parse_vsector(&fs_descriptor, buffer);
+	if(res != 0)
+	{
+		printf("Failed to located the vsector!");
+		return 2;
+	}
 
 	close(fd);
 	//close(fd);
