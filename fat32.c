@@ -38,6 +38,8 @@ struct fat32_record {
 	unsigned int file_size;
 }__attribute__((packed));
 
+struct fat32_record* const cluster_record_view = (struct fat32_record*)cluster_buffer;
+
 //Null terminated go brrr
 void print_buffer(const unsigned char* buffer, const size_t len) {
 	for(int i = 0; i < len; i++)
