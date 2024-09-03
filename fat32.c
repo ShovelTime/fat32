@@ -1,3 +1,4 @@
+#include <assert.h>
 #define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
 #include <fuse3/fuse_lowlevel.h>
@@ -16,7 +17,7 @@
 #define MAGIC_SIG 0xAA55 // Magic number identifying the volume ID sector. Offset at 0x1FE in vsector.
 #define RECORD_PER_SECTOR 16 //512 byte sectors can hold 16 32-bytes records.
 
-unsigned long true_sector_count = 0; //amount of data that will actually be read into the buffer
+size_t current_cluster_number = 2;
 unsigned char cluster_buffer[SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER];
 
 struct fat32_descriptor {
@@ -72,6 +73,7 @@ void print_buffer(const unsigned char* buffer, const size_t len) {
 	printf("\n");
 };
 
+
 void print_records(const struct fat32_record* records) {
 	for(int i = 0; i < RECORD_PER_SECTOR * fs_descriptor.sec_per_cluster; i++)
 	{
@@ -87,8 +89,8 @@ void print_records(const struct fat32_record* records) {
 			default:
 				if((current.attrib & 0b00001111) == 0x0F){
 					printf("LFN RECORD\n");
-					printf("Filename cluster: %u\n\n", (current.first_clust_high << 16) + current.first_clust_low);
-					break;
+					//printf("Filename cluster: %u\n\n", (current.first_clust_high << 16) + current.first_clust_low);
+					//break;
 
 				}
 
@@ -116,7 +118,7 @@ size_t compute_sector_cluster(const size_t cluster_number, const struct fat32_de
 }
 
 
-
+// load cluster into global buffer
 int read_into_cluster_buffer(const size_t cluster_number, int fd)
 {
 
@@ -129,6 +131,7 @@ int read_into_cluster_buffer(const size_t cluster_number, int fd)
 		printf("Failed to read cluster %lu! Reason: %s", cluster_number , strerror(fail));
 		exit(fail);
 	}
+	current_cluster_number = cluster_number;
 	return bytes_read;
 }
 
@@ -168,6 +171,8 @@ int fat32_getattr(const char* path, struct stat* inode_info, struct fuse_file_in
 
 //MAIN
 int main(int argc, char* argv[]) {
+	assert(sizeof(struct fat32_record) == 32);	
+	//printf("Size of record struct : %lu\n", sizeof(struct fat32_record));
 	if(argc < 2) {
 		printf("E:Device file argument expected. \n");
 		return 1;
@@ -205,7 +210,7 @@ int main(int argc, char* argv[]) {
 	fs_descriptor.root_first_cluster,
 	fs_descriptor.cluster_begin);
 
-	lseek(fd, compute_cluster_offset(2, &fs_descriptor) * SECTOR_SIZE, SEEK_SET); // go to begginning of root cluster;
+	lseek(fd, compute_sector_cluster(2, &fs_descriptor) * SECTOR_SIZE, SEEK_SET); // go to begginning of root cluster;
 	read(fd, cluster_buffer, fs_descriptor.bytes_per_cluster);
 	print_buffer(cluster_buffer, 512 * 2);
 	print_records(cluster_records);
