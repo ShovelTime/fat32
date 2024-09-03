@@ -41,7 +41,8 @@ struct fat32_record {
 
 struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffer;
 
-
+//convert a byte into its binary representation in a string.
+//PLEASE FOR THE LOVE OF GOD DONT FORGET THE NULL BYTE AT OFFSET 8
 void uchar_into_bits_str(unsigned char* bit_str, const unsigned char byte)
 {
 	for(int i = 0; i < 8; i++)
@@ -113,12 +114,11 @@ size_t compute_cluster_offset(const unsigned int cluster_number, const struct fa
 	return fs_info->cluster_begin + ((cluster_number - 2) * fs_info->sec_per_cluster);
 }
 
-//convert a byte into its binary representation in a string.
-//PLEASE FOR THE LOVE OF GOD DONT FORGET THE NULL BYTE AT OFFSET 8
+
 
 int read_cluster(const size_t cluster_number, unsigned char* const buffer, int fd)
 {
-
+	
 	return 0;
 }
 
