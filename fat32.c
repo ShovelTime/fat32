@@ -24,6 +24,7 @@ struct fat32_descriptor {
 	unsigned int sec_per_fat; //0x24
 	unsigned int root_first_cluster; //0x2C //usually at 0x2;
 	unsigned long cluster_begin;
+	unsigned long bytes_per_cluster;
 };
 
 struct fat32_descriptor fs_descriptor;
@@ -38,7 +39,19 @@ struct fat32_record {
 	unsigned int file_size;
 }__attribute__((packed));
 
-struct fat32_record* const cluster_record_view = (struct fat32_record*)cluster_buffer;
+struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffer;
+
+
+void uchar_into_bits_str(unsigned char* bit_str, const unsigned char byte)
+{
+	for(int i = 0; i < 8; i++)
+	{
+		bit_str[7 - i] = ((byte >> i) // move the relevant bit to the first position
+			& 1) //then filter out the other bits
+			+ 48; //add the ASCII code for '0' to the result, if the bit was set, the sum will be 49, which is the ASCII code for '1'
+	}
+}
+
 
 //Null terminated go brrr
 void print_buffer(const unsigned char* buffer, const size_t len) {
@@ -58,7 +71,7 @@ void print_buffer(const unsigned char* buffer, const size_t len) {
 };
 
 void print_records(const struct fat32_record* records) {
-	for(int i = 0; i < RECORD_PER_SECTOR; i++)
+	for(int i = 0; i < RECORD_PER_SECTOR * fs_descriptor.sec_per_cluster; i++)
 	{
 		const struct fat32_record current = records[i];
 		printf("Record %u\n", i);
@@ -71,18 +84,25 @@ void print_records(const struct fat32_record* records) {
 				return;
 			default:
 				if((current.attrib & 0b00001111) == 0x0F){
-					printf("LFN RECORD\n\n");
+					printf("LFN RECORD\n");
+					printf("Filename cluster: %u\n\n", (current.first_clust_high << 16) + current.first_clust_low);
+					break;
 
 				}
-				else {
-					printf("name: %s\n attribute byte: %X\n first cluster hi : %u | lo: %u \n file size: %u\n\n",
-	 					current.name,
-	 					current.attrib,
-						current.first_clust_high,
-	 					current.first_clust_low,
-	 					current.file_size	
-					);
-				}
+
+				unsigned char attr_bits[9] = {0};
+				uchar_into_bits_str(attr_bits, current.attrib);
+
+				
+				printf("name: %.11s\n attribute byte: %s\n first cluster hi : %u | lo: %u \n actual cluster number : %u \nfile size: %u\n\n",
+	 				current.name,
+	 				attr_bits,
+					current.first_clust_high,
+	 				current.first_clust_low,
+					(current.first_clust_high << 16) + current.first_clust_low,
+	 				current.file_size	
+				);
+
 		}
 
 	}
@@ -93,7 +113,10 @@ size_t compute_cluster_offset(const unsigned int cluster_number, const struct fa
 	return fs_info->cluster_begin + ((cluster_number - 2) * fs_info->sec_per_cluster);
 }
 
-int read_sector(const size_t sector_number, unsigned char* const buffer, int fd)
+//convert a byte into its binary representation in a string.
+//PLEASE FOR THE LOVE OF GOD DONT FORGET THE NULL BYTE AT OFFSET 8
+
+int read_cluster(const size_t cluster_number, unsigned char* const buffer, int fd)
 {
 
 	return 0;
@@ -117,6 +140,7 @@ int parse_vsector(struct fat32_descriptor* container, const unsigned char* const
 	container->sec_per_fat = *((unsigned int*)(sector + 0x24));
 	container->root_first_cluster = *((unsigned int*)(sector + 0x2C));
 	container->cluster_begin = container->reserved_sectors_amnt + (FAT_NUMBER * container->sec_per_fat);
+	container->bytes_per_cluster = SECTOR_SIZE * container->sec_per_cluster;
 	return 0;
 }
 
@@ -133,12 +157,10 @@ int main(int argc, char* argv[]) {
 		printf("E:Device file argument expected. \n");
 		return 1;
 	}
-	printf("size of fat32_record struct: %lu\n", sizeof(struct fat32_record));
 	const char* path = argv[1];
 	struct stat device_info;
 	printf("%s \n", path); 
-	unsigned char buffer[SECTOR_SIZE * 128];
-	struct fat32_record* const sector_records = (struct fat32_record*)(&buffer[0]);
+	unsigned char init_buffer[SECTOR_SIZE];
 	int fd = open(path, O_RDONLY, O_SYNC);
 	if (errno != 0) {
 		int fail = errno;
@@ -151,10 +173,10 @@ int main(int argc, char* argv[]) {
 		printf("Failed to open stat! error: %s \n", strerror(fail));
 		return fail;
 	}
-	read(fd, buffer, 512);
-	print_buffer(buffer, 512);	
+	read(fd, init_buffer, SECTOR_SIZE);
+	print_buffer(init_buffer, SECTOR_SIZE);	
 
-	int res = parse_vsector(&fs_descriptor, buffer);
+	int res = parse_vsector(&fs_descriptor, init_buffer);
 	if(res != 0) {
 		printf("Failed to parse the vsector!");
 		close(fd);
@@ -169,9 +191,9 @@ int main(int argc, char* argv[]) {
 	fs_descriptor.cluster_begin);
 
 	lseek(fd, compute_cluster_offset(2, &fs_descriptor) * SECTOR_SIZE, SEEK_SET); // go to begginning of root cluster;
-	read(fd, buffer, 512);
-	print_buffer(buffer, 512);
-	print_records(sector_records);
+	read(fd, cluster_buffer, fs_descriptor.bytes_per_cluster);
+	print_buffer(cluster_buffer, 512 * 2);
+	print_records(cluster_records);
 
 	close(fd);
 	//close(fd);
