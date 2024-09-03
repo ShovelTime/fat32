@@ -1,6 +1,7 @@
 #define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
 #include <fuse3/fuse_lowlevel.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -110,16 +111,25 @@ void print_records(const struct fat32_record* records) {
 }
 
 // Compute offset of a cluster down to its sector.
-size_t compute_cluster_offset(const unsigned int cluster_number, const struct fat32_descriptor* fs_info) {
+size_t compute_sector_cluster(const size_t cluster_number, const struct fat32_descriptor* fs_info) {
 	return fs_info->cluster_begin + ((cluster_number - 2) * fs_info->sec_per_cluster);
 }
 
 
 
-int read_cluster(const size_t cluster_number, unsigned char* const buffer, int fd)
+int read_into_cluster_buffer(const size_t cluster_number, int fd)
 {
-	
-	return 0;
+
+	size_t sector_offset = compute_sector_cluster(cluster_number, &fs_descriptor);
+	lseek(fd, sector_offset * SECTOR_SIZE, SEEK_SET);
+	int bytes_read = read(fd, cluster_buffer, fs_descriptor.bytes_per_cluster);
+	if(errno != 0)
+	{
+		int fail = errno;
+		printf("Failed to read cluster %lu! Reason: %s", cluster_number , strerror(fail));
+		exit(fail);
+	}
+	return bytes_read;
 }
 
 
@@ -134,6 +144,11 @@ int parse_vsector(struct fat32_descriptor* container, const unsigned char* const
 		printf("Invalid volume sector, wrong FAT number!\n");
 		return 2;
 
+	}
+	if(*((unsigned short*)(sector + 0x0B)) != SECTOR_SIZE)
+	{
+		printf("Invalid volume sector, wrong Bytes Per Sector!\n");
+	 	return 3;
 	}
 	container->sec_per_cluster = sector[0x0D];
 	container->reserved_sectors_amnt = *((unsigned short*)(sector + 0x0E));
