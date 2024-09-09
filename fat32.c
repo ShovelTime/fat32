@@ -17,8 +17,9 @@
 #define MAGIC_SIG 0xAA55 // Magic number identifying the volume ID sector. Offset at 0x1FE in vsector.
 #define RECORD_PER_SECTOR 16 //512 byte sectors can hold 16 32-bytes records.
 
-size_t current_cluster_number = 2;
+size_t current_cluster_number = 2; //lmao imagine using side-effects
 unsigned char cluster_buffer[SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER];
+unsigned char LFN_buffer[256]; //buffer to hold lfn names
 
 struct fat32_descriptor {
 	unsigned char sec_per_cluster; // 0x0D
@@ -119,11 +120,13 @@ size_t compute_sector_cluster(const size_t cluster_number, const struct fat32_de
 
 
 // load cluster into global buffer
-int read_into_cluster_buffer(const size_t cluster_number, int fd)
+int read_into_cluster_buffer(const size_t cluster_number, const int fd)
 {
 
 	size_t sector_offset = compute_sector_cluster(cluster_number, &fs_descriptor);
 	lseek(fd, sector_offset * SECTOR_SIZE, SEEK_SET);
+
+	//TODO: Investigate edge case of EOF
 	int bytes_read = read(fd, cluster_buffer, fs_descriptor.bytes_per_cluster);
 	if(errno != 0)
 	{
@@ -133,6 +136,16 @@ int read_into_cluster_buffer(const size_t cluster_number, int fd)
 	}
 	current_cluster_number = cluster_number;
 	return bytes_read;
+}
+
+
+//move buffer into directory.
+//returns cluster number on successful move, -1 on failure to find directory name
+int move_into_directory(const char* directory_name, const int fd, const size_t name_len)
+{
+	if(name_len > 11)//LFN name, oh dear
+	{
+	}
 }
 
 
