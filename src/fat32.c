@@ -27,12 +27,13 @@ const char *reserved_filenames[] = {
     "LPT¹", "LPT²", "LPT³"
 };
 
+typedef unsigned char char8_t;
 size_t current_cluster_number = 2; //lmao imagine using side-effects
-unsigned char cluster_buffer[SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER];
-unsigned char LFN_buffer[256]; //buffer to hold lfn names
+char8_t cluster_buffer[SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER];
+char16_t LFN_buffer[256]; //buffer to hold lfn names
 
 struct fat32_descriptor {
-	unsigned char sec_per_cluster; // 0x0D
+	char8_t sec_per_cluster; // 0x0D
 	unsigned short reserved_sectors_amnt; // 0x0E, default is typically 0x20;
 	unsigned int sec_per_fat; //0x24
 	unsigned int root_first_cluster; //0x2C //usually at 0x2;
@@ -43,8 +44,8 @@ struct fat32_descriptor {
 struct fat32_descriptor fs_descriptor;
 
 struct fat32_record {
-	unsigned char name[11]; 
-	unsigned char attrib; 
+	char8_t name[11]; 
+	char8_t attrib; 
 	unsigned long pad1; 
 	unsigned short first_clust_high;
 	unsigned int pad2;
@@ -53,14 +54,14 @@ struct fat32_record {
 }__attribute__((packed));
 
 struct lfn_record {
-	unsigned char seq_num; // where this record fits within the sequence.
-	unsigned char name1[10];//first name part
-	unsigned char attrib; // must be 0x0F
-	unsigned char dir_type; //must be 0
-	unsigned char checksum; //how does it work?
-	unsigned char name2[12]; //second name part
+	char8_t seq_num; // where this record fits within the sequence.
+	char8_t name1[10];//first name part
+	char8_t attrib; // must be 0x0F
+	char8_t dir_type; //must be 0
+	char8_t checksum; //how does it work?
+	char8_t name2[12]; //second name part
 	unsigned short unused; // used to be first_clust_low, MUST be zero
-	unsigned char name3[4]; // final name part;
+	char8_t name3[4]; // final name part;
 
 }__attribute__((packed));
 
@@ -68,7 +69,7 @@ struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffe
 
 
 // copies wstring from src to dest until null OR n-defined amount of wchar copied is reached
-// apparently not find a thing in stdlib, thanks Obama.
+// apparently not find a thing in stdlib, thanks Obama, but I aint doing constant conversions from wchar to char16 and vice-versa
 // will NOT include the null terminator!!!
 // returns amount of characters copied.
 int wscpy_nt(char16_t* dest, const char16_t* src, const size_t len)
@@ -84,7 +85,7 @@ int wscpy_nt(char16_t* dest, const char16_t* src, const size_t len)
 
 //convert a byte into its binary representation in a string.
 //PLEASE FOR THE LOVE OF GOD DONT FORGET THE NULL BYTE AT OFFSET 8
-void uchar_into_bits_str(unsigned char* bit_str, const unsigned char byte)
+void uchar_into_bits_str(char8_t* bit_str, const char8_t byte)
 {
 	for(int i = 0; i < 8; i++)
 	{
@@ -99,9 +100,12 @@ int is_lfn_record(const struct fat32_record* record)
 	return (record->attrib & 0b00001111) == 0x0F;
 }
 
+//convert LFN into SFN representation
+//TODO: how is the LFN to SFN conversion for extensions considered?
+int lfn_to_sfn(char8_t* dest, const char16_t src, const size_t src_len);
 
 //Null terminated go brrr
-void print_buffer(const unsigned char* buffer, const size_t len) {
+void print_buffer(const char8_t* buffer, const size_t len) {
 	for(int i = 0; i < len; i++)
 	{
 		if(isalpha(buffer[i]))
@@ -117,6 +121,7 @@ void print_buffer(const unsigned char* buffer, const size_t len) {
 	printf("\n");
 };
 
+//See above but char16_t
 void print_wbuffer(const char16_t* buf, const size_t len, const char* suffix)
 {
 	int i = 0;
@@ -151,6 +156,8 @@ int get_lfn(const struct fat32_record* record) {
 	return 0;
 }
 
+int read_lfn_extension(char16_t);
+
 void print_records(const struct fat32_record* records) {
 	for(int i = 0; i < RECORD_PER_SECTOR * fs_descriptor.sec_per_cluster; i++)
 	{
@@ -181,7 +188,7 @@ void print_records(const struct fat32_record* records) {
 
 				}
 
-				unsigned char attr_bits[9] = {0};
+				char8_t attr_bits[9] = {0};
 				uchar_into_bits_str(attr_bits, current.attrib);
 
 				
@@ -237,7 +244,7 @@ int move_into_directory(const char* directory_name, const int fd, const size_t n
 }
 
 
-int parse_vsector(struct fat32_descriptor* container, const unsigned char* const sector) {
+int parse_vsector(struct fat32_descriptor* container, const char8_t* const sector) {
 	unsigned short magic_num = *((short*)(sector + 0x1FE));
 	if(magic_num != MAGIC_SIG) {
 		printf("Invalid volume sector, wrong signature number!\n");
@@ -283,7 +290,7 @@ int main(int argc, char* argv[]) {
 	const char* path = argv[1];
 	struct stat device_info;
 	printf("%s \n", path); 
-	unsigned char init_buffer[SECTOR_SIZE];
+	char8_t init_buffer[SECTOR_SIZE];
 	int fd = open(path, O_RDONLY, O_SYNC);
 	if (errno != 0) {
 		int fail = errno;
