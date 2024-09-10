@@ -1,7 +1,9 @@
 #include <assert.h>
+#include <uchar.h>
 #define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
 #include <fuse3/fuse_lowlevel.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -64,6 +66,22 @@ struct lfn_record {
 
 struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffer;
 
+
+// copies wstring from src to dest until null OR n-defined amount of wchar copied is reached
+// apparently not find a thing in stdlib, thanks Obama.
+// will NOT include the null terminator!!!
+// returns amount of characters copied.
+int wscpy_nt(char16_t* dest, const char16_t* src, const size_t len)
+{
+	int n_copied = 0;	
+	while(n_copied < len && *src != L'\0')
+	{
+		dest[n_copied] = src[n_copied];
+		n_copied++;
+	}
+	return n_copied;
+}
+
 //convert a byte into its binary representation in a string.
 //PLEASE FOR THE LOVE OF GOD DONT FORGET THE NULL BYTE AT OFFSET 8
 void uchar_into_bits_str(unsigned char* bit_str, const unsigned char byte)
@@ -99,6 +117,39 @@ void print_buffer(const unsigned char* buffer, const size_t len) {
 	printf("\n");
 };
 
+void print_wbuffer(const char16_t* buf, const size_t len, const char* suffix)
+{
+	int i = 0;
+	while(i < len)
+	{
+		printf("%lc", buf[i]);
+		if(errno != 0)
+		{
+			int fail = errno;
+			printf("failed to print char16! \n %s \n", strerror(fail));
+			break;
+		}
+		i++;
+	}
+	printf("%s", suffix);
+}
+
+//parse lfn records into LFN_buffer.
+//the record pointer should be pointing the record within the buffer itself.
+//returns character count in buffer, -1 if there is no lfn assigned to the record.
+int get_lfn(const struct fat32_record* record) {
+	//Sanity check, make sure it points to a record in the buffer.
+	long offset = (long)record - (long)cluster_buffer;
+	if(offset > (SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER) || offset < 0)
+	{
+		printf("invalid pointer to buffer, offset from buffer at %p : %ld", cluster_buffer, offset);
+		return -2;
+	}
+
+	const struct lfn_record* reader = (struct lfn_record*)record;
+	//while()
+	return 0;
+}
 
 void print_records(const struct fat32_record* records) {
 	for(int i = 0; i < RECORD_PER_SECTOR * fs_descriptor.sec_per_cluster; i++)
@@ -115,8 +166,18 @@ void print_records(const struct fat32_record* records) {
 			default:
 				if(is_lfn_record(&current)){
 					printf("LFN RECORD\n");
-					//printf("Filename cluster: %u\n\n", (current.first_clust_high << 16) + current.first_clust_low);
-					//break;
+					char16_t lfn_segment[14] = {L'\0'};
+					size_t offset = 0;
+					const struct lfn_record* lfn_view = (struct lfn_record*) &current;
+					offset += wscpy_nt(lfn_segment, (const char16_t*)lfn_view->name1, 5);
+					printf("%ld\n", offset),
+					offset += wscpy_nt(lfn_segment + offset + 1, (const char16_t*)lfn_view->name2, 6);
+					printf("%ld\n", offset),
+					offset += wscpy_nt(lfn_segment + offset + 1, (const char16_t*)lfn_view->name3, 2);
+					printf("%ld\n", offset),
+					printf("name: ");
+					print_wbuffer(lfn_segment, 13, "\n\n");
+					break;					
 
 				}
 
@@ -212,6 +273,8 @@ int fat32_getattr(const char* path, struct stat* inode_info, struct fuse_file_in
 //MAIN
 int main(int argc, char* argv[]) {
 	assert(sizeof(struct fat32_record) == 32);	
+	assert(sizeof(struct lfn_record) == 32);
+	assert(sizeof(char16_t) == 2);
 	//printf("Size of record struct : %lu\n", sizeof(struct fat32_record));
 	if(argc < 2) {
 		printf("E:Device file argument expected. \n");
