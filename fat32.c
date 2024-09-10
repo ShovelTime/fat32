@@ -17,6 +17,14 @@
 #define MAGIC_SIG 0xAA55 // Magic number identifying the volume ID sector. Offset at 0x1FE in vsector.
 #define RECORD_PER_SECTOR 16 //512 byte sectors can hold 16 32-bytes records.
 
+const char *reserved_filenames[] = {
+    "CON", "PRN", "AUX", "NUL", 
+    "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", 
+    "COM¹", "COM²", "COM³", 
+    "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", 
+    "LPT¹", "LPT²", "LPT³"
+};
+
 size_t current_cluster_number = 2; //lmao imagine using side-effects
 unsigned char cluster_buffer[SECTOR_SIZE * MAX_SECTOR_PER_CLUSTER];
 unsigned char LFN_buffer[256]; //buffer to hold lfn names
@@ -42,6 +50,18 @@ struct fat32_record {
 	unsigned int file_size;
 }__attribute__((packed));
 
+struct lfn_record {
+	unsigned char seq_num; // where this record fits within the sequence.
+	unsigned char name1[10];//first name part
+	unsigned char attrib; // must be 0x0F
+	unsigned char dir_type; //must be 0
+	unsigned char checksum; //how does it work?
+	unsigned char name2[12]; //second name part
+	unsigned short unused; // used to be first_clust_low, MUST be zero
+	unsigned char name3[4]; // final name part;
+
+}__attribute__((packed));
+
 struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffer;
 
 //convert a byte into its binary representation in a string.
@@ -54,6 +74,11 @@ void uchar_into_bits_str(unsigned char* bit_str, const unsigned char byte)
 			& 1) //then filter out the other bits
 			+ 48; //add the ASCII code for '0' to the result, if the bit was set, the sum will be 49, which is the ASCII code for '1'
 	}
+}
+
+int is_lfn_record(const struct fat32_record* record)
+{
+	return (record->attrib & 0b00001111) == 0x0F;
 }
 
 
@@ -88,7 +113,7 @@ void print_records(const struct fat32_record* records) {
 				printf("END OF DIRECTORY \n\n");
 				return;
 			default:
-				if((current.attrib & 0b00001111) == 0x0F){
+				if(is_lfn_record(&current)){
 					printf("LFN RECORD\n");
 					//printf("Filename cluster: %u\n\n", (current.first_clust_high << 16) + current.first_clust_low);
 					//break;
@@ -145,7 +170,9 @@ int move_into_directory(const char* directory_name, const int fd, const size_t n
 {
 	if(name_len > 11)//LFN name, oh dear
 	{
+		return -2; // not implemented yet lmao;
 	}
+	return 0;
 }
 
 
