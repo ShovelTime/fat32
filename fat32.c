@@ -74,7 +74,7 @@ struct fat32_record* const cluster_records = (struct fat32_record*)cluster_buffe
 int wscpy_nt(char16_t* dest, const char16_t* src, const size_t len)
 {
 	int n_copied = 0;	
-	while(n_copied < len && *src != L'\0')
+	while(n_copied < len && *src != u'\0')
 	{
 		dest[n_copied] = src[n_copied];
 		n_copied++;
