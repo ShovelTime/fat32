@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
-    b.installArtifact(lib);
+    const installed_lib = b.addInstallArtifact(lib, .{});
 
     const exe = b.addExecutable(.{
         .name = "fat32",
@@ -43,6 +43,8 @@ pub fn build(b: *std.Build) void {
     exe.linkLibrary(lib);
     exe.linkSystemLibrary("c");
 
+    installed_lib.emitted_h = lib.getEmittedH();
+    b.getInstallStep().dependOn(&installed_lib.step);
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
